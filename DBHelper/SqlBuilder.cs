@@ -287,9 +287,13 @@ public class TableBuilder
     
     public string ToCount(out Dictionary<string,object> parameters)
     {
-        var sql = $"SELECT COUNT(1) FROM {Table} WHERE {WhereBuild.ToWhere(out var p)}";
+        var sql = $"SELECT COUNT(1) FROM {Table}";
         parameters = new();
-        parameters.AddAll(p);
+        if (WhereBuild.Any())
+        {
+            sql += $" WHERE {WhereBuild.ToWhere(out var p)}";
+            parameters.AddAll(p);
+        }
         return sql;
     }
 }
