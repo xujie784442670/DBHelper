@@ -218,24 +218,7 @@ public class DBHelper
     ///  <returns></returns>
     public int ExecuteNonQuery(DbConnection connection, string sql, object parameter)
     {
-        var matches = Regex.Matches(sql, @"@(\w+)");
-        var parameters = new DbParameter[matches.Count];
-        for (var i = 0; i < matches.Count; i++)
-        {
-            var match = matches[i];
-            var name = match.Groups[1].Value;
-            object value = null;
-            if (parameter is Dictionary<string, object> dict)
-            {
-                value = dict[name];
-            }
-            else
-            {
-                value = parameter.GetPropertyValue<object>(name);
-            }
-
-            parameters[i] = CreateParameter($"@{name}", value);
-        }
+        var parameters = patternSql<object>(sql, parameter);
 
         return ExecuteNonQuery(connection, sql, parameters);
     }
@@ -351,6 +334,12 @@ public class DBHelper
     public T ExecuteQuery<T>(DbConnection connection, string sql, Func<DataTable, T> resultHandler,
         object parameter)
     {
+        var parameters = patternSql<T>(sql, parameter);
+        return ExecuteQuery(connection, sql, resultHandler, parameters);
+    }
+
+    private DbParameter[] patternSql<T>(string sql, object parameter)
+    {
         var matches = Regex.Matches(sql, @"@(\w+)");
         var parameters = new DbParameter[matches.Count];
         for (var i = 0; i < matches.Count; i++)
@@ -370,7 +359,7 @@ public class DBHelper
             parameters[i] = CreateParameter(name, value);
         }
 
-        return ExecuteQuery(connection, sql, resultHandler, parameters);
+        return parameters;
     }
 
     /// <summary>
@@ -393,6 +382,22 @@ public class DBHelper
         var dataTable = new DataTable();
         dataTable.Load(reader);
         return resultHandler(PrintResult(dataTable));
+    }
+
+    /// <summary>
+    /// 执行查询SQL语句,返回List
+    /// </summary>
+    /// <typeparam name="T">返回结果类型</typeparam>
+    /// <param name="connection">数据库连接对象</param>
+    /// <param name="sql">SQL语句</param>
+    /// <param name="resultHandler">结果处理委托</param>
+    /// <param name="parameter">参数对象,支持普通对象和字典</param>
+    /// <returns>查询结果</returns>
+    public List<T> ExecuteQuery<T>(DbConnection connection, string sql, Func<DataRow, T> resultHandler,
+        object parameter)
+    {
+        var dbParameters = patternSql<T>(sql, parameter);
+        return ExecuteQuery(connection, sql, resultHandler, dbParameters);
     }
 
     /// <summary>
@@ -431,6 +436,13 @@ public class DBHelper
     {
         using var connection = GetConnection();
         return ExecuteQuery(connection, sql, resultHandler, parameters);
+    }
+
+    public List<T> ExecuteQuery<T>(string sql, Func<DataRow, T> resultHandler, object parameter)
+    {
+        using var connection = GetConnection();
+        var dbParameters = patternSql<T>(sql, parameter);
+        return ExecuteQuery(connection, sql, resultHandler, dbParameters);
     }
 
     /// <summary>
@@ -637,6 +649,80 @@ public class DBHelper
 
         var sql = tb.ToInsert(out var parameters,true);
         return ExecuteNonQuery(connection, sql, parameters);
+    }
+
+    /// <summary>
+    /// 查询数据
+    /// </summary>
+    /// <typeparam name="T">返回的结果类型</typeparam>
+    /// <param name="connection">数据库连接对象</param>
+    /// <param name="sql">sql语句</param>
+    /// <param name="parameters">参数列表</param>
+    /// <returns>结果集合</returns>
+    public List<T> ExecuteQuery<T>(DbConnection connection,string sql,params DbParameter[] parameters)
+    {
+        return ExecuteQuery(connection,sql, (DataTable table) =>
+        {
+            var list = new List<T>();
+            foreach (DataRow row in table.Rows)
+            {
+                var item = Activator.CreateInstance<T>();
+                var properties = TypeHelper.GetProperties(typeof(T),true);
+                foreach (var property in properties)
+                {
+                    var columnName = ToUnderlineName(property.Name);
+                    // 如果列名不存在,则跳过
+                    if (!table.Columns.Contains(columnName))
+                    {
+                        continue;
+                    }
+                    if (!row.IsNull(columnName))
+                    {
+                        item.SetPropertyValue(property.Name, row[columnName]);
+                    }
+                }
+                list.Add(item);
+            }
+            return list;
+        },parameters);
+    }
+    /// <summary>
+    /// 查询数据
+    /// </summary>
+    /// <typeparam name="T">返回的结果类型</typeparam>
+    /// <param name="connection">数据库连接对象</param>
+    /// <param name="sql">sql语句</param>
+    /// <param name="parameter">参数对象,目前仅支持普通对象及字典</param>
+    /// <returns>结果集合</returns>
+    public List<T> ExecuteQuery<T>(DbConnection connection,string sql, object parameter)
+    {
+        var parameters = patternSql<T>(sql, parameter);
+        return ExecuteQuery<T>(connection, sql, parameters);
+    }
+
+    /// <summary>
+    /// 查询数据
+    /// </summary>
+    /// <typeparam name="T">返回的结果类型</typeparam>
+    /// <param name="sql">sql语句</param>
+    /// <param name="parameters">参数列表</param>
+    /// <returns>结果集合</returns>
+    public List<T> ExecuteQuery<T>(string sql, params DbParameter[] parameters)
+    {
+        using var connection = GetConnection();
+        return ExecuteQuery<T>(connection, sql, parameters);
+    }
+    /// <summary>
+    /// 查询数据
+    /// </summary>
+    /// <typeparam name="T">返回的结果类型</typeparam>
+    /// <param name="sql">sql语句</param>
+    /// <param name="parameter">参数对象,目前仅支持普通对象及字典</param>
+    /// <returns>结果集合</returns>
+    public List<T> ExecuteQuery<T>(string sql, object parameter)
+    {
+        using var connection = GetConnection();
+        return ExecuteQuery<T>(connection, sql, parameter);
     }
 
     private string ToUnderlineName(string name)
