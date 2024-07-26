@@ -22,17 +22,17 @@ public class DBHelper
     /// <summary>
     /// 打印SQL事件,<see cref="IsPrintSql"/> 为True时可用
     /// </summary>
-    private event Action<string> OnPrintSql;
+    public event Action<string> OnPrintSql;
 
     /// <summary>
     /// 打印参数事件,<see cref="IsPrintParameters"/>为True时可用
     /// </summary>
-    private event Action<DbParameter[]> OnPrintParameters;
+    public event Action<DbParameter[]> OnPrintParameters;
 
     /// <summary>
     /// 打印结果事件,<see cref="IsPrintResult"/>为True时可用
     /// </summary>
-    private event Action<object> OnPrintResult;
+    public event Action<object> OnPrintResult;
 
     /// <summary>
     /// 是否打印SQL
@@ -159,6 +159,15 @@ public class DBHelper
             }
         };
         _parameterFactory = parameterFactory;
+    }
+    /// <summary>
+    /// 创建SQL构建器
+    /// </summary>
+    /// <param name="tableName">表名称</param>
+    /// <returns></returns>
+    public TableBuilder CreateSqlBuilder(string tableName)
+    {
+        return SqlBuilder.CreateBuilder(tableName, _parameterFactory);
     }
 
     /// <summary>
@@ -463,6 +472,35 @@ public class DBHelper
         PrintSqlAndParameters(command);
         return resultHandler(PrintResult(command.ExecuteScalar()));
     }
+    ///  <summary>
+    ///  执行查询SQL语句,返回第一行第一列
+    ///  </summary>
+    /// <param name="connection">数据库连接对象</param>
+    ///  <param name="sql">sql语句</param>
+    ///  <param name="parameter">
+    ///  简化参数对象,支持普通对象和字典,如果是普通对象,对象的属性名作为参数名,如:
+    ///  select * from user_info where id = @Id => 其中参数为@Id,那么在对象中的属性名为Id,字典中的Key也为Id
+    ///  </param>
+    ///  <returns></returns>
+    public T ExecuteScalar<T>(DbConnection connection, string sql, object parameter)
+    {
+        var parameters = patternSql<T>(sql, parameter);
+        return ExecuteScalar<T>(connection, sql, parameters);
+    }
+    ///  <summary>
+    ///  执行查询SQL语句,返回第一行第一列
+    ///  </summary>
+    ///  <param name="sql">sql语句</param>
+    ///  <param name="parameter">
+    ///  简化参数对象,支持普通对象和字典,如果是普通对象,对象的属性名作为参数名,如:
+    ///  select * from user_info where id = @Id => 其中参数为@Id,那么在对象中的属性名为Id,字典中的Key也为Id
+    ///  </param>
+    ///  <returns></returns>
+    public T ExecuteScalar<T>(string sql, object parameter)
+    {
+        using var connection = GetConnection();
+        return ExecuteScalar<T>(connection, sql, parameter);
+    }
 
 
     /// <summary>
@@ -647,7 +685,7 @@ public class DBHelper
             }
         }
 
-        var sql = tb.ToInsert(out var parameters,true);
+        var sql = tb.ToInsert<Dictionary<string,object>>(out var parameters,true);
         return ExecuteNonQuery(connection, sql, parameters);
     }
 

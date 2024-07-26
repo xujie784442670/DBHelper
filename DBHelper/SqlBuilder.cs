@@ -4,6 +4,7 @@ using System.Data.Common;
 using System.Linq;
 
 namespace Helper;
+
 /// <summary>
 /// SQL构建器
 /// </summary>
@@ -74,9 +75,9 @@ namespace Helper;
 /// </example>
 public class SqlBuilder
 {
-    public static TableBuilder CreateBuilder(string table)
+    public static TableBuilder CreateBuilder(string table, Func<string, object, DbParameter> createParameter = null)
     {
-        return new TableBuilder(table);
+        return new TableBuilder(table, createParameter);
     }
 }
 
@@ -93,7 +94,7 @@ public class ColumnBuilder(TableBuilder tableBuilder)
             if (columns.Length > 1 || Column.Any())
             {
                 Column.AddRange(columns);
-                throw new ArgumentException("查询所有列时,不应该再指定其他列:"+ string.Join(",", Column));
+                throw new ArgumentException("查询所有列时,不应该再指定其他列:" + string.Join(",", Column));
             }
         }
 
@@ -129,12 +130,15 @@ public class TableBuilder
 
     internal List<string> GroupByColumns = new();
 
-    public TableBuilder(string table)
+    private Func<string, object, DbParameter> _createParameter;
+
+    public TableBuilder(string table, Func<string, object, DbParameter> createParameter = null)
     {
         Table = table;
         WhereBuild = new WhereBuild(this);
         HavingBuild = new WhereBuild(this);
         ColumnBuild = new ColumnBuilder(this);
+        _createParameter = createParameter;
     }
 
     /// <summary>
@@ -145,68 +149,200 @@ public class TableBuilder
     /// <param name="columnRight">从表列名</param>
     /// <param name="joinType">连接类型</param>
     /// <returns></returns>
-    public TableBuilder Join(string table, string columnLeft, string columnRight, JoinType joinType=JoinType.Inner)
+    public TableBuilder Join(string table, string columnLeft, string columnRight, JoinType joinType = JoinType.Inner)
     {
         Joins.Add(new JoinTable(Table, table, columnLeft, columnRight, joinType.ToString().ToUpper()));
         return this;
     }
 
+    /// <summary>
+    /// 添加表连接
+    /// </summary>
+    /// <param name="condition">是否进行表连接</param>
+    /// <param name="table">从表名称</param>
+    /// <param name="columnLeft">主表列名</param>
+    /// <param name="columnRight">从表列名</param>
+    /// <param name="joinType">连接类型</param>
+    /// <returns></returns>
+    public TableBuilder Join(bool condition, string table, string columnLeft, string columnRight, JoinType joinType = JoinType.Inner)
+    {
+        if (condition) Join(table, columnLeft, columnRight, joinType);
+        return this;
+    }
+
+
+    /// <summary>
+    /// 添加查询列
+    /// </summary>
+    /// <returns></returns>
     public ColumnBuilder Column()
     {
         return ColumnBuild;
     }
-
+    /// <summary>
+    /// 添加查询列
+    /// </summary>
+    /// <param name="columns"></param>
+    /// <returns></returns>
     public TableBuilder Select(params string[] columns)
     {
         ColumnBuild.Add(columns);
         return this;
     }
-
+    /// <summary>
+    /// 创建查询条件构建器
+    /// </summary>
+    /// <returns></returns>
     public WhereBuild Where()
     {
         return WhereBuild;
     }
-
+    /// <summary>
+    /// 创建查询条件构建器
+    /// </summary>
+    /// <returns></returns>
     public WhereBuild Having()
     {
         return HavingBuild;
     }
-
+    /// <summary>
+    /// 添加排序
+    /// </summary>
+    /// <param name="column"></param>
+    /// <param name="orderType"></param>
+    /// <returns></returns>
     public TableBuilder OrderBy(string column, OrderType orderType)
     {
         OrderByInfos.Add(new OrderByInfo { Column = column, OrderType = orderType });
         return this;
     }
+    /// <summary>
+    /// 添加排序
+    /// </summary>
+    /// <param name="condition">是否添加排序</param>
+    /// <param name="column"></param>
+    /// <param name="orderType"></param>
+    /// <returns></returns>
+    public TableBuilder OrderBy(bool condition, string column, OrderType orderType)
+    {
+        if (condition) OrderBy(column, orderType);
+        return this;
+    }
 
+    /// <summary>
+    /// 添加分组
+    /// </summary>
+    /// <param name="column"></param>
+    /// <returns></returns>
     public TableBuilder GroupBy(string column)
     {
         GroupByColumns.Add(column);
         return this;
     }
+    /// <summary>
+    /// 添加分组
+    /// </summary>
+    /// <param name="condition">是否添加分组</param>
+    /// <param name="column"></param>
+    /// <returns></returns>
+    public TableBuilder GroupBy(bool condition, string column)
+    {
+        if (condition) GroupBy(column);
+        return this;
+    }
 
+    /// <summary>
+    /// 添加设置
+    /// </summary>
+    /// <param name="column"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
     public TableBuilder Set(string column, object value)
     {
         Sets.Add(Condition.Create(column, "=", value));
         return this;
     }
-
+    /// <summary>
+    /// 添加设置
+    /// </summary>
+    /// <param name="condition">是否添加设置</param>
+    /// <param name="column"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    public TableBuilder Set(bool condition, string column, object value)
+    {
+        if (condition) Set(column, value);
+        return this;
+    }
+    /// <summary>
+    /// 添加新增
+    /// </summary>
+    /// <param name="column"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
     public TableBuilder Insert(string column, object value)
     {
-        Values.Add(Condition.Create(column,"",value));
+        Values.Add(Condition.Create(column, "", value));
+        return this;
+    }
+    /// <summary>
+    /// 添加新增
+    /// </summary>
+    /// <param name="condition"></param>
+    /// <param name="column"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    public TableBuilder Insert(bool condition, string column, object value)
+    {
+        if (condition) Insert(column, value);
         return this;
     }
 
+    /// <summary>
+    /// 生成查询SQL
+    /// </summary>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
     public string ToSelect()
     {
-        var sql = ToSelect(out var p);
+        var sql = ToSelect<Dictionary<string,object>>(out var p);
         if (p.Any())
         {
             throw new ArgumentException("查询语句不应该有参数,或者SQL中有参数需要接收");
         }
+
         return sql;
     }
 
-    public string ToSelect(out Dictionary<string,object> parameters)
+    private T CreateParameters<T>(Dictionary<string, object> param)
+    {
+        T parameters;
+        if (typeof(T) == typeof(Dictionary<string, object>))
+        {
+            parameters = (T)(object)param;
+        }
+        else if (typeof(T) == typeof(DbParameter[]))
+        {
+            parameters = (T)(object)param.Select(x => _createParameter(x.Key, x.Value)).ToArray();
+        }
+        else if (typeof(T) == typeof(List<DbParameter>))
+        {
+            parameters = (T)(object)param.Select(x => _createParameter(x.Key, x.Value)).ToList();
+        }
+        else
+        {
+            throw new ArgumentException("不支持的参数类型");
+        }
+        return parameters;
+    }
+
+    /// <summary>
+    /// 生成查询SQL
+    /// </summary>
+    /// <param name="parameters"></param>
+    /// <typeparam name="T"></typeparam>
+    /// <returns></returns>
+    public string ToSelect<T>(out T parameters)
     {
         var sql = "";
         var columns = string.Join(",", ColumnBuild.Column);
@@ -215,19 +351,20 @@ public class TableBuilder
         {
             columns = "*";
         }
+
         sql += $"SELECT {columns} FROM {Table}";
         foreach (var join in Joins)
         {
             sql += $" {join}";
         }
-        parameters = new();
+
+        var param = new Dictionary<string, object>();
         // 检查是否有条件
         if (WhereBuild.Any())
         {
             sql += $" WHERE {WhereBuild.ToWhere(out var p)}";
-            parameters.AddAll(p);
+            param.AddAll(p);
         }
-
 
         if (GroupByColumns.Any())
         {
@@ -237,33 +374,41 @@ public class TableBuilder
         if (HavingBuild.Any())
         {
             sql += $" HAVING {HavingBuild.ToWhere(out var p2)}";
-            parameters.AddAll(p2);
+            param.AddAll(p2);
         }
 
         if (OrderByInfos.Any())
         {
             sql += $" ORDER BY {string.Join(",", OrderByInfos)}";
         }
+        parameters = CreateParameters<T>(param);
         return sql;
     }
+
     /// <summary>
     /// 生成新增SQL
     /// </summary>
     /// <param name="parameters"></param>
     /// <param name="isPropertyName">生成的参数名称是否不带@前缀,默认为false</param>
     /// <returns></returns>
-    public string ToInsert(out Dictionary<string,object> parameters,bool isPropertyName=false)
+    public string ToInsert<T>(out T parameters, bool isPropertyName = false)
     {
-        var sql = $"INSERT INTO {Table} ({string.Join(",", Values.Select(c=>c.Column))}) VALUES ({string.Join(",", Values.Select(x => $"@{x.Column}"))})";
-        parameters = new();
+        var sql =
+            $"INSERT INTO {Table} ({string.Join(",", Values.Select(c => c.Column))}) VALUES ({string.Join(",", Values.Select(x => $"@{x.Column}"))})";
+        var param = new Dictionary<string, object>();
         foreach (var t in Values)
         {
-            parameters[$"{(isPropertyName?"": "@")}{t.Column}"] = t.Value;
+            param[$"{(isPropertyName ? "" : "@")}{t.Column}"] = t.Value;
         }
+        parameters = CreateParameters<T>(param);
         return sql;
     }
-
-    public string ToUpdate(out Dictionary<string,object> parameters)
+    /// <summary>
+    /// 生成更新SQL
+    /// </summary>
+    /// <param name="parameters"></param>
+    /// <returns></returns>
+    public string ToUpdate<T>(out T parameters)
     {
         var param = new Dictionary<string, object>();
         var sql = $"UPDATE {Table} SET {string.Join(",", Sets.Select(x => {
@@ -271,29 +416,36 @@ public class TableBuilder
             param.AddAll(p);
             return sql;
         }))} WHERE {WhereBuild.ToWhere(out var p2)}";
-        parameters = new();
-        parameters.AddAll(param);
-        parameters.AddAll(p2);
+        param.AddAll(p2);
+        parameters = CreateParameters<T>(param);
         return sql;
     }
-
-    public string ToDelete(out Dictionary<string,object> parameters)
+    /// <summary>
+    /// 生成删除SQL
+    /// </summary>
+    /// <param name="parameters"></param>
+    /// <returns></returns>
+    public string ToDelete<T>(out T parameters)
     {
         var sql = $"DELETE FROM {Table} WHERE {WhereBuild.ToWhere(out var p)}";
-        parameters = new();
-        parameters.AddAll(p);
+        parameters = CreateParameters<T>(p);
         return sql;
     }
-    
-    public string ToCount(out Dictionary<string,object> parameters)
+    /// <summary>
+    /// 生成统计SQL
+    /// </summary>
+    /// <param name="parameters"></param>
+    /// <returns></returns>
+    public string ToCount<T>(out T parameters)
     {
         var sql = $"SELECT COUNT(1) FROM {Table}";
-        parameters = new();
+        var param = new Dictionary<string, object>();
         if (WhereBuild.Any())
         {
             sql += $" WHERE {WhereBuild.ToWhere(out var p)}";
-            parameters.AddAll(p);
+            param.AddAll(p);
         }
+        parameters = CreateParameters<T>(param);
         return sql;
     }
 }
@@ -365,7 +517,7 @@ public class WhereBuild(TableBuilder tableBuilder)
         return this;
     }
 
-    public string ToWhere(out Dictionary<string,object> parameters)
+    public string ToWhere(out Dictionary<string, object> parameters)
     {
         parameters = new();
         var sql = "";
@@ -380,13 +532,14 @@ public class WhereBuild(TableBuilder tableBuilder)
             }));
             parameters.AddAll(param);
         }
+
         return sql;
     }
 
     public Condition And(bool cond, string column, string @operator, object value) =>
         And(cond, new Condition(column, @operator, value));
 
-    public Condition And(string column, string @operator, object value) => And(true,column, @operator, value);
+    public Condition And(string column, string @operator, object value) => And(true, column, @operator, value);
 
     public Condition And(bool cond, Condition condition)
     {
@@ -413,7 +566,7 @@ public class WhereBuild(TableBuilder tableBuilder)
 
     public Condition Or(string column, string @operator, object value)
     {
-        return Or(true,column, @operator, value);
+        return Or(true, column, @operator, value);
     }
 
     public Condition Or(bool cond, Condition condition)
@@ -464,11 +617,13 @@ public class JoinTable(string tableLeft, string tableRight, string columnLeft, s
         {
             sql += $"{TableLeft}.";
         }
+
         sql += $"{ColumnLeft} = ";
         if (!ColumnRight.Contains("."))
         {
             sql += $"{TableRight}.";
         }
+
         sql += $"{ColumnRight}";
         return sql;
     }
@@ -518,7 +673,7 @@ public class Condition
         Ors = or;
     }
 
-    public string Build(out Dictionary<string,object> parameters)
+    public string Build(out Dictionary<string, object> parameters)
     {
         var para = new Dictionary<string, object>();
         var result = "";
@@ -527,6 +682,7 @@ public class Condition
             result += $"{Column} {Operator} @{Column}";
             para.Add($"@{Column}", Value);
         }
+
         if (Ands != null)
         {
             result += $" AND ({string.Join(" AND ", Ands.Select(x => {
@@ -544,6 +700,7 @@ public class Condition
                 return sql;
             }))})";
         }
+
         parameters = para;
         // 移除多余的AND和OR
         result = result.Replace("AND ()", "").Replace("OR ()", "");
