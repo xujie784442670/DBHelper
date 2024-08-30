@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Data.SQLite;
 using System.Data.SqlTypes;
 using System.Globalization;
@@ -96,6 +97,55 @@ namespace DBHelper.Test
             // var tb4 = SqlBuilder.CreateBuilder("user_info");
             // tb4.Where().And("id", "=", 1);
             // tb4.ToDelete(out var p5).Println("SQL ");
+            // and username = @username
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateEquals("username", "admin"))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL Equals: ");
+            // and username != @username
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateNotEquals("username", "admin"))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL Not Equals: ");
+            // and id > @id
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateGreaterThan("id", 1))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL GreaterThan: ");
+            // and id >= @id
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateGreaterThanOrEquals("id", 1))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL GreaterThanOrEquals: ");
+            // and id < @id
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateLessThan("id", 1))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL LessThan: ");
+            // and id <= @id
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateLessThanOrEquals("id", 1))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL LessThanOrEquals: ");
+            // and username like '%'||@username||'%'
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateLike("username", "a"))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL Like: ");
+            // and id in (@id_0,@id_1,@id_2)
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateIn("id", new object[] { 1, 2, 3 }))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL In: ");
+            // and id not in (@id_0,@id_1,@id_2)
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateNotIn("id", new object[] { 1, 2, 3 }))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL Not In: ");
+            // and id between @id_1 and @id_2
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateBetween("id", 1, 3))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL Between: ");
+            // and username like @username||'%'
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreatePrefix("username","a"))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL Prefix: ");
+            // and username like '%'||@username
+            SqlBuilder.CreateBuilder("user_info").Where()
+                .And(Condition.CreateSuffix("username", "a"))
+                .WhereBuild().BuildEnd().ToSelect<Dictionary<string, object>>(out _).Println("SQL Suffix: ");
+
 
 
             // 测试简化传参
@@ -105,9 +155,9 @@ namespace DBHelper.Test
             //     Username = "admin",
             //     Password = "123"
             // };
-            helper.IsPrintSql = true;
-            helper.IsPrintParameters = true;
-            helper.IsPrintResult = true;
+            // helper.IsPrintSql = true;
+            // helper.IsPrintParameters = true;
+            // helper.IsPrintResult = true;
             // // 传对象
             // "传对象".Println();
             // helper.ExecuteNonQuery("insert into user_info(username,password) values(@Username,@Password)", user);
@@ -128,12 +178,12 @@ namespace DBHelper.Test
             // tb.ToSelect().Println("SQL: => ");
 
             // 新增对象测试
-            UserInfo user = new UserInfo
-            {
-                Username = "admin",
-                Password = "123"
-            };
-            helper.InsertSelective(user);
+            // UserInfo user = new UserInfo
+            // {
+            //     Username = "admin",
+            //     Password = "123"
+            // };
+            // helper.InsertSelective(user);
             /*
              * SELECT * FROM user_info u
              * user_info u INNER JOIN order_info o ON o.user_id = u.id

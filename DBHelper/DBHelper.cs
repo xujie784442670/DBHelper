@@ -116,7 +116,7 @@ public class DBHelper
     /// <summary>
     /// 构造函数
     /// </summary>
-    /// <param name="connectionFactory"></param>
+    /// <param name="connectionFactory">连接对象创建工厂</param>
     /// <param name="parameterFactory">参数对象创建工厂,可空</param>
     /// <exception cref="ArgumentNullException"></exception>
     public DBHelper(Func<DbConnection> connectionFactory, Func<string, object, DbParameter> parameterFactory = null)
@@ -358,7 +358,7 @@ public class DBHelper
             object value = null;
             if (parameter is Dictionary<string, object> dict)
             {
-                value = dict[name];
+                dict.TryGetValue($"@{name}", out value);
             }
             else
             {
@@ -402,11 +402,11 @@ public class DBHelper
     /// <param name="resultHandler">结果处理委托</param>
     /// <param name="parameter">参数对象,支持普通对象和字典</param>
     /// <returns>查询结果</returns>
-    public List<T> ExecuteQuery<T>(DbConnection connection, string sql, Func<DataRow, T> resultHandler,
+    public List<T> ExecuteQueryList<T>(DbConnection connection, string sql, Func<DataRow, T> resultHandler,
         object parameter)
     {
         var dbParameters = patternSql<T>(sql, parameter);
-        return ExecuteQuery(connection, sql, resultHandler, dbParameters);
+        return ExecuteQueryList(connection, sql, resultHandler, dbParameters);
     }
 
     /// <summary>
@@ -418,7 +418,7 @@ public class DBHelper
     /// <param name="resultHandler">结果处理委托</param>
     /// <param name="parameters">参数列表</param>
     /// <returns>查询结果</returns>
-    public List<T> ExecuteQuery<T>(DbConnection connection, string sql, Func<DataRow, T> resultHandler,
+    public List<T> ExecuteQueryList<T>(DbConnection connection, string sql, Func<DataRow, T> resultHandler,
         params DbParameter[] parameters)
     {
         return ExecuteQuery<List<T>>(connection, sql, dataTable =>
@@ -441,17 +441,24 @@ public class DBHelper
     /// <param name="resultHandler">结果处理委托</param>
     /// <param name="parameters">参数列表</param>
     /// <returns>查询结果</returns>
-    public List<T> ExecuteQuery<T>(string sql, Func<DataRow, T> resultHandler, params DbParameter[] parameters)
+    public List<T> ExecuteQueryList<T>(string sql, Func<DataRow, T> resultHandler, params DbParameter[] parameters)
     {
         using var connection = GetConnection();
-        return ExecuteQuery(connection, sql, resultHandler, parameters);
+        return ExecuteQueryList(connection, sql, resultHandler, parameters);
     }
-
-    public List<T> ExecuteQuery<T>(string sql, Func<DataRow, T> resultHandler, object parameter)
+    /// <summary>
+    /// 执行查询SQL语句,返回List
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="sql"></param>
+    /// <param name="resultHandler"></param>
+    /// <param name="parameter"></param>
+    /// <returns></returns>
+    public List<T> ExecuteQueryList<T>(string sql, Func<DataRow, T> resultHandler, object parameter)
     {
         using var connection = GetConnection();
         var dbParameters = patternSql<T>(sql, parameter);
-        return ExecuteQuery(connection, sql, resultHandler, dbParameters);
+        return ExecuteQueryList(connection, sql, resultHandler, dbParameters);
     }
 
     /// <summary>
@@ -685,7 +692,7 @@ public class DBHelper
             }
         }
 
-        var sql = tb.ToInsert<Dictionary<string,object>>(out var parameters,true);
+        var sql = tb.ToInsert<Dictionary<string,object>>(out var parameters);
         return ExecuteNonQuery(connection, sql, parameters);
     }
 
